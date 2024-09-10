@@ -1,8 +1,9 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 )
@@ -16,12 +17,15 @@ type RingIntBuffer struct {
 	m     sync.Mutex
 }
 
+var infoLog = log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
+
 // NewRingIntBuffer - создание нового буфера целых чисел
 func NewRingIntBuffer(size int) *RingIntBuffer {
 	return &RingIntBuffer{make([]int, size), -1, size, sync.Mutex{}}
 }
 
 func (r *RingIntBuffer) Push(el int) {
+	infoLog.Println("Push element to buffer")
 	r.m.Lock()
 	defer r.m.Unlock()
 	if r.pos == r.size-1 {
@@ -39,6 +43,7 @@ func (r *RingIntBuffer) Push(el int) {
 
 // Get - получение всех элементов буфера и его последующая очистка
 func (r *RingIntBuffer) Get() []int {
+	infoLog.Println("Get element to buffer")
 	if r.pos < 0 {
 		return nil
 	}
@@ -62,6 +67,7 @@ func NewPipelineInt(done <-chan bool, stages ...StageInt) *PipeLineInt {
 func (p *PipeLineInt) Run(source <-chan int) <-chan int {
 	var c <-chan int = source
 	for index := range p.stages {
+		infoLog.Printf("Start run stage № %d\n", index+1)
 		c = p.runStageInt(p.stages[index], c)
 	}
 	return c
@@ -72,6 +78,7 @@ func (p *PipeLineInt) runStageInt(stage StageInt, sourceChan <-chan int) <-chan 
 }
 
 func dataSource() (<-chan int, <-chan bool) {
+	infoLog.Printf("Creating datasource\n")
 	c := make(chan int)
 	done := make(chan bool)
 	go func() {
@@ -82,12 +89,13 @@ func dataSource() (<-chan int, <-chan bool) {
 			c <- a
 			//fmt.Println(a)
 		}
-		fmt.Println("End")
+		infoLog.Println("End")
 	}()
 	return c, done
 }
 
 func MinesFilter(done <-chan bool, c <-chan int) <-chan int {
+	infoLog.Printf("Mines filter stage\n")
 	convertedIntChan := make(chan int)
 	go func() {
 		for {
@@ -109,6 +117,7 @@ func MinesFilter(done <-chan bool, c <-chan int) <-chan int {
 }
 
 func specialFilterStageInt(done <-chan bool, c <-chan int) <-chan int {
+	infoLog.Printf("Special filter stage\n")
 	filteredIntChan := make(chan int)
 	go func() {
 		for {
@@ -132,6 +141,7 @@ func specialFilterStageInt(done <-chan bool, c <-chan int) <-chan int {
 }
 
 func bufferStageInt(done <-chan bool, c <-chan int) <-chan int {
+	infoLog.Printf("Buffer stage\n")
 	bufferedIntChan := make(chan int)
 	buffer := NewRingIntBuffer(bufferSize)
 	go func() {
@@ -141,9 +151,9 @@ func bufferStageInt(done <-chan bool, c <-chan int) <-chan int {
 				//fmt.Println("bufferStageInt ", data)
 				//fmt.Println("bufferStageInt ", "Y")
 				buffer.Push(data)
-				fmt.Println("Push ", buffer)
+				infoLog.Println("Push ", buffer)
 			case <-done:
-				fmt.Println("Вывод:", buffer)
+				infoLog.Println("Вывод:", buffer)
 				return
 			}
 		}
@@ -160,10 +170,11 @@ func bufferStageInt(done <-chan bool, c <-chan int) <-chan int {
 }
 
 func consumer(done <-chan bool, c <-chan int) {
+	infoLog.Printf("Starting producer\n")
 	for {
 		select {
 		case data := <-c:
-			fmt.Printf("Обработаны данные: %d\n", data)
+			infoLog.Printf("Обработаны данные: %d\n", data)
 		case <-done:
 			return
 		}
@@ -171,6 +182,7 @@ func consumer(done <-chan bool, c <-chan int) {
 }
 
 func main() {
+	infoLog.Printf("Start application\n")
 	source, done := dataSource()
 	pipeline := NewPipelineInt(done, MinesFilter, specialFilterStageInt, bufferStageInt)
 	consumer(done, pipeline.Run(source))
